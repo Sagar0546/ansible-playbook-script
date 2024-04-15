@@ -1,0 +1,114 @@
+---
+- hosts: localhost
+  become: yes
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+  tasks:
+    - name: Create VPC
+      ec2_vpc_net:
+        aws_access_key: ""
+        aws_secret_key: ""
+        cidr_block: "10.0.0.0/16"
+        name: "sagar-vpc"
+        region: "us-east-2"
+        state: present
+      register: vpc_result
+
+    - name: Create Internet Gateway
+      ec2_vpc_igw:
+        aws_access_key: ""
+        aws_secret_key: ""
+        vpc_id: "{{ vpc_result.vpc.id }}"
+        region: "us-east-2"
+        state: present
+        tags:
+          Name: "sagar-igw"
+      register: igw_result
+
+    - name: Create Public Subnet
+      ec2_vpc_subnet:
+        aws_access_key: ""
+        aws_secret_key: ""
+        vpc_id: "{{ vpc_result.vpc.id }}"
+        region: "us-east-2"
+        az: "us-east-2a"
+        state: present
+        cidr: "10.0.0.0/20"
+        map_public: yes
+        resource_tags:
+          Name: "sagar-pub"
+      register: pubsubnet_result
+
+    - name: Create Private Subnet
+      ec2_vpc_subnet:
+        aws_access_key: ""
+        aws_secret_key: ""
+        vpc_id: "{{ vpc_result.vpc.id }}"
+        region: "us-east-2"
+        az: "us-east-2a"
+        state: present
+        cidr: "10.0.16.0/20"
+        map_public: no
+        resource_tags:
+          Name: "sagar-pvt"
+      register: pvtsubnet_result
+
+    - name: Create Public Route Table
+      ec2_vpc_route_table:
+        aws_access_key: ""
+        aws_secret_key: ""
+        vpc_id: "{{ vpc_result.vpc.id }}"
+        region: "us-east-2"
+        state: present
+        tags:
+          Name: "sagar-pub-rt"
+        subnets: ["{{ pubsubnet_result.subnet.id }}"]
+        routes:
+          - dest: "0.0.0.0/0"
+            gateway_id: "{{ igw_result.gateway_id }}"
+      register: public_route_table
+
+    - name: Create Private Route Table
+      ec2_vpc_route_table:
+        aws_access_key: ""
+        aws_secret_key: ""
+        vpc_id: "{{ vpc_result.vpc.id }}"
+        region: "us-east-2"
+        state: present
+        tags:
+          Name: "sagar-pvt-rt"
+        subnets: ["{{ pvtsubnet_result.subnet.id }}"]
+      register: private_route_table
+
+    - name: Create Security Group
+      ec2_group:
+        aws_access_key: ""
+        aws_secret_key: ""
+        vpc_id: "{{ vpc_result.vpc.id }}"
+        region: "us-east-2"
+        state: present
+        name: "sagar-sg"
+        description: "allow"
+        tags:
+          Name: "sagar-sg"
+        rules:
+          - proto: all
+            cidr_ip: "0.0.0.0/0"
+            rule_desc: "allow all traffic"
+      register: security_group_results
+
+    - name: Launch EC2 instance
+      ec2:
+        aws_access_key: ""
+        aws_secret_key: ""
+        image: "ami-00cda30cf72311684"
+        instance_type: "t2.micro"
+        region: "us-east-2"
+        wait: yes
+        count: 1
+        state: present
+        vpc_subnet_id: "{{ pubsubnet_result.subnet.id }}"
+        assign_public_ip: yes
+        group_id: "{{ security_group_results.group_id }}"
+        instance_tags:
+          Name: "sagar-Ec"
