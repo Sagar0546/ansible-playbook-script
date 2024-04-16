@@ -6,20 +6,20 @@
   tasks:
     - name: Create VPC
       ec2_vpc_net:
-        aws_access_key: ""
-        aws_secret_key: ""
+        aws_access_key: "Access_KEY"
+        aws_secret_key: "SECRET_KEY"
         cidr_block: "10.0.0.0/16"
         name: "sagar-vpc"
-        region: "us-east-2"
+        region: "ap-south-1"
         state: present
       register: vpc_result
 
     - name: Create Internet Gateway
       ec2_vpc_igw:
-        aws_access_key: ""
-        aws_secret_key: ""
+        aws_access_key: "ACCESS_KEY"
+        aws_secret_key: "SECRET_KEY"
         vpc_id: "{{ vpc_result.vpc.id }}"
-        region: "us-east-2"
+        region: "ap-south-1"
         state: present
         tags:
           Name: "sagar-igw"
@@ -27,11 +27,11 @@
 
     - name: Create Public Subnet
       ec2_vpc_subnet:
-        aws_access_key: ""
-        aws_secret_key: ""
+        aws_access_key: "ACCESS_KEY"
+        aws_secret_key: "SECRET_KEY"
         vpc_id: "{{ vpc_result.vpc.id }}"
-        region: "us-east-2"
-        az: "us-east-2a"
+        region: "ap-south-1"
+        az: "ap-south-1a"
         state: present
         cidr: "10.0.0.0/20"
         map_public: yes
@@ -41,11 +41,11 @@
 
     - name: Create Private Subnet
       ec2_vpc_subnet:
-        aws_access_key: ""
-        aws_secret_key: ""
+        aws_access_key: ""ACCESS_KEY
+        aws_secret_key: "SECRET_KEY"
         vpc_id: "{{ vpc_result.vpc.id }}"
-        region: "us-east-2"
-        az: "us-east-2a"
+        region: "ap-south-1"
+        az: "ap-south-1a"
         state: present
         cidr: "10.0.16.0/20"
         map_public: no
@@ -55,10 +55,10 @@
 
     - name: Create Public Route Table
       ec2_vpc_route_table:
-        aws_access_key: ""
-        aws_secret_key: ""
+        aws_access_key: "ACCESS_KEY"
+        aws_secret_key: "SECRET_KEY"
         vpc_id: "{{ vpc_result.vpc.id }}"
-        region: "us-east-2"
+        region: "ap-south-1"
         state: present
         tags:
           Name: "sagar-pub-rt"
@@ -70,10 +70,10 @@
 
     - name: Create Private Route Table
       ec2_vpc_route_table:
-        aws_access_key: ""
-        aws_secret_key: ""
+        aws_access_key: "ACCESS_KEY"
+        aws_secret_key: "SECRET_KEY"
         vpc_id: "{{ vpc_result.vpc.id }}"
-        region: "us-east-2"
+        region: "ap-south-1"
         state: present
         tags:
           Name: "sagar-pvt-rt"
@@ -82,10 +82,10 @@
 
     - name: Create Security Group
       ec2_group:
-        aws_access_key: ""
-        aws_secret_key: ""
+        aws_access_key: "ACCESS_KEY"
+        aws_secret_key: "SECRET_KEY"
         vpc_id: "{{ vpc_result.vpc.id }}"
-        region: "us-east-2"
+        region: "ap-south-1"
         state: present
         name: "sagar-sg"
         description: "allow"
@@ -99,11 +99,11 @@
 
     - name: Launch EC2 instance
       ec2:
-        aws_access_key: ""
-        aws_secret_key: ""
-        image: "ami-00cda30cf72311684"
+        aws_access_key: "ACCESS_KEY"
+        aws_secret_key: "SECRET_KEY"
+        image: "ami-0451f2687182e0411"
         instance_type: "t2.micro"
-        region: "us-east-2"
+        region: "ap-south-1"
         wait: yes
         count: 1
         state: present
@@ -112,3 +112,9 @@
         group_id: "{{ security_group_results.group_id }}"
         instance_tags:
           Name: "sagar-Ec"
+        user_data: |
+          #!/bin/bash
+          sudo yum -y install git httpd
+          sudo systemctl start httpd
+          sudo systemctl enable httpd
+          git clone https://github.com/sagar0546/foodapplication.git /var/www/html/
