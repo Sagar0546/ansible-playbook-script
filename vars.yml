@@ -1,50 +1,49 @@
 ---
 - hosts: localhost
   become: yes
+  gather_facts: false
 
   vars:
-    aws_credentials:
-      aws_access_key: "access key"
-      aws_secret_key: "secret key"
-    vpc_name: "sagarvpc"
-    vpc_cidr_block: "10.0.0.0/16"
-    igw_name: "sagarigw"
-    pubsubnet_name: "ansiblepub"
-    pubsubnet_cidr_block: "10.0.1.0/24"
-    pvtsubnet_name: "ansiblepvt"
-    pvtsubnet_cidr_block: "10.0.2.0/24"
-    pubroute_table_name: "route1"
-    pvtroute_table_name: "route2"
-    security_group_name: "ansible_sg"
+    aws_access_key: ""
+    aws_secret_key: ""
+    title: "ARTH"
+    vpc_name: "spk_vpc"
+    igw_name: "spk_igw"
+    pubsubnet_name: "spk_pub"
+    pubroute_table_name: "spk_pub_rt"
+    pvtroute_table_name: "spk_pvt_rt"
+    pvtsubnet_name: "spk_pvt"
+    security_group_name: "spk_sg"
+    vpc_cidr_block: "11.0.0.0/16"
+    pubsubnet_cidr_block: "11.0.1.0/24"
+    pvtsubnet_cidr_block: "11.0.2.0/24"
+    destination_cidr_block: "0.0.0.0/0"
     port22_cidr_block: "0.0.0.0/0"
-    region: "ap-south-1"
-    pubzone: "ap-south-1a"
-    pvtzone: "ap-south-1b"
-    image_id: "ami-0451f2687182e0411"
-    instance_type: "t2.micro"
-    instance_name: "My_ansible"
-    user_data: |
-          #!/bin/bash
-          sudo yum -y install git httpd
-          sudo systemctl start httpd
-          sudo systemctl enable httpd
-          git clone https://github.com/PavanGitPro/foodapplication.git /var/www/html/
+    region: "us-east-2"
+    pubzone: "us-east-2a"
+    pvtzone: "us-east-2b"
+    image_id: "ami-080e449218d4434fa"
+    type: "t2.micro"
+    instance_name: "spk-ec"
 
   tasks:
     - name: Create VPC
       ec2_vpc_net:
-        aws_access_key: "{{ aws_credentials.aws_access_key }}"
-        aws_secret_key: "{{ aws_credentials.aws_secret_key }}"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
         cidr_block: "{{ vpc_cidr_block }}"
         name: "{{ vpc_name }}"
         region: "{{ region }}"
+        dns_support: yes
+        dns_hostnames: yes
+        tenancy: default
         state: present
       register: vpc_result
 
-    # Create Internet Gateway
-    - ec2_vpc_igw:
-        aws_access_key: "{{ aws_credentials.aws_access_key }}"
-        aws_secret_key: "{{ aws_credentials.aws_secret_key }}"
+    - name: Create Internet Gateway
+      ec2_vpc_igw:
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
         vpc_id: "{{ vpc_result.vpc.id }}"
         region: "{{ region }}"
         state: present
@@ -52,10 +51,10 @@
           Name: "{{ igw_name }}"
       register: igw_result
 
-    # Create subnets
-    - ec2_vpc_subnet:
-        aws_access_key: "{{ aws_credentials.aws_access_key }}"
-        aws_secret_key: "{{ aws_credentials.aws_secret_key }}"
+    - name: Create VPC Public Subnet
+      ec2_vpc_subnet:
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
         vpc_id: "{{ vpc_result.vpc.id }}"
         region: "{{ region }}"
         az: "{{ pubzone }}"
@@ -66,9 +65,10 @@
           Name: "{{ pubsubnet_name }}"
       register: pubsubnet_result
 
-    - ec2_vpc_subnet:
-        aws_access_key: "{{ aws_credentials.aws_access_key }}"
-        aws_secret_key: "{{ aws_credentials.aws_secret_key }}"
+    - name: Create VPC Private Subnet
+      ec2_vpc_subnet:
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
         vpc_id: "{{ vpc_result.vpc.id }}"
         region: "{{ region }}"
         az: "{{ pvtzone }}"
@@ -79,68 +79,112 @@
           Name: "{{ pvtsubnet_name }}"
       register: pvtsubnet_result
 
-    # Create route table
-    - ec2_vpc_route_table:
-        aws_access_key: "{{ aws_credentials.aws_access_key }}"
-        aws_secret_key: "{{ aws_credentials.aws_secret_key }}"
+    - name: Create VPC Public Route Table
+      ec2_vpc_route_table:
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
         vpc_id: "{{ vpc_result.vpc.id }}"
         region: "{{ region }}"
         state: present
         tags:
           Name: "{{ pubroute_table_name }}"
-        subnets: "{{ pubsubnet_result.subnet.id }}"
+        subnets:
+          - "{{ pubsubnet_result.subnet.id }}"
         routes:
-          - dest: "0.0.0.0/0"
+          - dest: "{{ destination_cidr_block }}"
             gateway_id: "{{ igw_result.gateway_id }}"
-      register: pubroute_table_result
+      register: public_route_table
 
-    # Private route table
-    - ec2_vpc_route_table:
-        aws_access_key: "{{ aws_credentials.aws_access_key }}"
-        aws_secret_key: "{{ aws_credentials.aws_secret_key }}"
+    - name: Create VPC Private Route Table
+      ec2_vpc_route_table:
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
         vpc_id: "{{ vpc_result.vpc.id }}"
         region: "{{ region }}"
         state: present
         tags:
           Name: "{{ pvtroute_table_name }}"
-        subnets: ["{{ pvtsubnet_result.subnet.id }}"]
+        subnets:
+          - "{{ pvtsubnet_result.subnet.id }}"
+      register: private_route_table
 
-    # Security group
-    - ec2_group:
-        aws_access_key: "{{ aws_credentials.aws_access_key }}"
-        aws_secret_key: "{{ aws_credentials.aws_secret_key }}"
+    - name: Create VPC Security Group
+      ec2_group:
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
         vpc_id: "{{ vpc_result.vpc.id }}"
         region: "{{ region }}"
+        state: present
         name: "{{ security_group_name }}"
-        description: "allow"
+        description: allow
         tags:
-          Name: "{{ security_group_name }}"
+          Name: spk-sg
         rules:
-          - proto: tcp
-            from_port: 80
-            to_port: 80
-            cidr_ip: "{{ port22_cidr_block }}"
-          - proto: tcp
-            from_port: 22
-            to_port: 22
-            cidr_ip: "{{ port22_cidr_block }}"
-        rules_egress:
           - proto: all
             cidr_ip: "{{ port22_cidr_block }}"
+            rule_desc: allow all traffic
+      register: security_group_results
 
-    # EC2 instance user_data
-    - ec2:
+    - name: Launch EC2 Instance
+      ec2:
         image: "{{ image_id }}"
-        instance_type: "{{ instance_type }}"
+        instance_type: "{{ type }}"
         region: "{{ region }}"
-        wait: true
+        wait: yes
         count: 1
         state: present
         vpc_subnet_id: "{{ pubsubnet_result.subnet.id }}"
         assign_public_ip: yes
-        group: "{{ security_group_name }}"
-        user_data: "{{ user_data }}"
-        aws_access_key: "{{ aws_credentials.aws_access_key }}"
-        aws_secret_key: "{{ aws_credentials.aws_secret_key }}"
+        group_id: "{{ security_group_results.group_id }}"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
         instance_tags:
           Name: "{{ instance_name }}"
+        user_data: |
+          #!/bin/bash
+          sudo yum -y install git httpd
+          sudo systemctl start httpd
+          sudo systemctl enable httpd
+          git clone https://github.com/PavanGitPro/ecomm.git /var/www/html
+
+    - name: Create ELB
+      ec2_elb_lb:
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+        name: spk-elb
+        region: "{{ region }}"
+        state: present
+        subnets:
+          - "{{ pubsubnet_result.subnet.id }}"
+        security_group_ids:
+          - "{{ security_group_results.group_id }}"
+        listeners:
+          - protocol: HTTP
+            load_balancer_port: 80
+            instance_protocol: HTTP
+            instance_port: 80
+        tags:
+          Name: spk-elb
+
+    - name: Create Launch Configuration
+      ec2_lc:
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+        name: spk-launch-config
+        image_id: "{{ image_id }}"
+        instance_type: "{{ type }}"
+        region: "{{ region }}"
+        key_name: "ansible1"
+        security_groups:
+          - "{{ security_group_name }}"
+        instance_monitoring: yes
+
+    - name: Create Auto Scaling Group
+      ec2_asg:
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+        region: "{{ region }}"
+        name: spk-asg
+        launch_config_name: spk-launch-config
+        min_size: 1
+        max_size: 3
